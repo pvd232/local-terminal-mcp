@@ -1,7 +1,7 @@
 # Review 2: Background service and tunnel
 
 Verdict: **Approve** for installation and tunnel operation. This is the
-implementing agent's self-review, with no separate reviewer approval.
+implementing agent's self-review. A separate reviewer approval remains pending.
 
 ## Reviewed state
 
@@ -17,7 +17,7 @@ property list and the running process tree.
 - One launchd job owns one persistent local server and one tunnel process.
   The running job had exactly those two direct children after restoration.
 - A repeated `start` preserves the active job and its address. The command
-  observed the already running service and completed without reloading it.
+  observed and preserved the already running service.
 - Local configuration survives stop/start. Installation creates it only when
   absent; the restored job read the same configuration.
 - The endpoint is written outside Git, as one complete replacement of the
@@ -29,7 +29,7 @@ property list and the running process tree.
 - HTTP shutdown closes the upstream; an upstream or tunnel failure ends the
   job so launchd can restart it. The signal and failure paths were inspected.
 
-No actionable findings remain in the reviewed source.
+Actionable findings: 0.
 
 ## Mechanical and live evidence
 
@@ -43,17 +43,17 @@ No actionable findings remain in the reviewed source.
   and after restoration. It found 25 tools, executed a fresh command, preserved
   a process across calls, and handled concurrent identical request IDs.
 - `plutil -lint` on the installed property list: passed.
-- `launchctl print`: job running, with no exit recorded for the restored job.
+- `launchctl print`: job running; the restored job's restart count stayed at 1.
 - `git diff --cached --check`: passed.
 
 ## Exclusions and remaining work
 
-Login restart is configured but a disruptive logout/reboot was not performed.
-Mac sleep recovery and termination of arbitrary grandchildren during a forced
-kill were not tested. Quick Tunnel hostname changes require updating the
+Login restart is configured. Logout/reboot, Mac sleep recovery, and termination
+of arbitrary grandchildren during a forced kill remain unverified.
+Quick Tunnel hostname changes require updating the
 connector after a whole-job restart.
 
 The shared account shows Local Mac Terminal as connected, and the plugin
 permissions API confirms **Allow all actions**. The current ChatGPTMOD chat
-has not yet loaded its tools. A model-originated call through that connector
+still needs to load its tools. A model-originated call through the connector
 remains a separate acceptance check.

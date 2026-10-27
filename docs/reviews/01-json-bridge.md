@@ -1,8 +1,8 @@
 # Review 1: JSON terminal bridge
 
 Verdict: **Approve** for the local bridge scope. This is a completed self-review
-by the implementing agent, using the code-review skill; no separate reviewer
-has approved the change.
+by the implementing agent, using the code-review skill. A separate reviewer
+approval remains pending.
 
 ## Reviewed state
 
@@ -15,17 +15,17 @@ interfaces and the local server's tool argument schemas.
 
 ## Invariants and counterexamples
 
-- The proxy launches one upstream process. Closing an HTTP request must not
-  destroy a terminal session. The test starts `cat`, sends input in a later
-  HTTP request, observes the echoed nonce, and terminates that process.
-- Terminal results must use JSON because Quick Tunnels do not support SSE.
+- The proxy launches one upstream process. Terminal sessions must survive
+  HTTP request closure. The test starts `cat`, sends input in a later HTTP
+  request, observes the echoed nonce, and terminates the `cat` process.
+- Terminal results must use JSON for Quick Tunnel compatibility.
   The verifier checks the response media type on every request.
 - Separate clients may use the same request ID. Two concurrent requests with
   ID `1` both complete with their own response.
-- A malformed JSON request must not stop the bridge. A subsequent ping passes.
+- The bridge must survive malformed JSON. A subsequent ping passes.
 - Unrecognized paths return 404. Bridge shutdown can be called twice.
 
-No actionable findings remain in this scope.
+Actionable findings: 0.
 
 ## Mechanical evidence
 
@@ -41,4 +41,4 @@ No actionable findings remain in this scope.
 The generated lockfile's dependency records were checked through npm, rather
 than reviewed as application source. Upstream dependency internals, tunnel
 startup, login persistence, and ChatGPTMOD discovery remain outside this
-checkpoint. No end-to-end ChatGPTMOD success is claimed here.
+checkpoint. End-to-end ChatGPTMOD acceptance remains pending.
