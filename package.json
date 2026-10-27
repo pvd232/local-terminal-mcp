@@ -1,0 +1,8 @@
+{
+  "name": "local-terminal-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run the free local Desktop Commander server through a personal ChatGPT connection.",
+  "engines": { "node": ">=22.12.0" }
+}
