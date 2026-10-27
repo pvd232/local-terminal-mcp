@@ -75,6 +75,24 @@ The complete address includes a randomly generated path. Treat it as the
 connection credential and keep it out of public issues and repository files.
 The connection uses the local server and the Quick Tunnel directly.
 
+### macOS access to protected folders
+
+The account's **Allow all actions** setting permits connector calls. macOS
+separately controls the background process's access to protected folders.
+Apple describes these permissions in its
+[Privacy & Security guide](https://support.apple.com/guide/mac-help/change-privacy-security-settings-on-mac-mchl211c911f/mac).
+During the initial installation, a Documents read stalled and the macOS privacy
+log reported that the LaunchAgent's Node executable lacked Full Disk Access.
+Commands and file reads in the development checkout passed.
+
+For access to protected folders, open **System Settings → Privacy & Security →
+Full Disk Access**. Add the absolute Node executable printed by
+`node -p process.execPath` after `nvm use`, then enable its switch. Authenticate
+through macOS if prompted. Keep this permission tied to the executable recorded
+in the LaunchAgent; changing Node installations requires checking it again.
+The installation's current permission status is in
+[verification.md](docs/verification.md).
+
 ## Operate it
 
 Run these commands from this checkout after `nvm use`:
@@ -138,6 +156,11 @@ starts `cat`, sends input in a later tool call,
 and terminates that test process. It checks that replies use JSON. Its output
 reports observed success and omits the private endpoint.
 
+An actual connector call can return a process ID while its command is still
+running. Use `read_process_output` with that ID to retrieve later output.
+Use `interact_with_process` to send input to an interactive session and
+`force_terminate` to end it.
+
 These HTTP checks verify the service and tunnel. A successful call selected
 through **Local Mac Terminal in ChatGPTMOD** is a separate acceptance check.
 Current evidence is in [verification.md](docs/verification.md).
@@ -147,3 +170,6 @@ The implementing agent records completed code reviews for each checkpoint:
 [background service](docs/reviews/02-background-service.md).
 Those records identify the reviewed source and executed checks. Each record is
 the implementing agent's self-review.
+The [operating-guide review](docs/reviews/03-reproduction-and-handoff.md) records
+reproduction checks; the [client-verification review](docs/reviews/04-client-verification.md)
+records the later ChatGPTMOD calls and remaining macOS permission step.

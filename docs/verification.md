@@ -18,17 +18,31 @@ Date: October 27, 2026. Target client: ChatGPTMOD on macOS.
   completed independently.
 - The shared ChatGPT account shows **Local Mac Terminal** as connected.
 - The permissions API confirms **Allow all actions** for that connector only.
+- This ChatGPTMOD chat loaded all 25 Local Mac Terminal tools and called the
+  connector's `start_process`, `read_process_output`, `interact_with_process`,
+  and `force_terminate` tools.
+- A connector command returned `LOCAL_MAC_TERMINAL_CONNECTED`, `Darwin`, and
+  the local username, then completed with exit code 0.
+- A separate connector call read a fresh challenge file in the development
+  checkout. Its contents matched the independently recorded SHA-256
+  `99c62d191b391cbc1be2771f0ce24f1cc3acc3d7390131cc598870ee40dfec23`.
+- An interactive `cat` session echoed input sent through a later connector
+  call. The test session was then terminated.
 - Additional paid-service cost: $0. Calls used the local server directly.
 
 ## Pending
 
-The current turn's tool catalog exposes Remote Desktop Commander. A
-model-originated call selected through **Local Mac Terminal** remains pending.
-The service/tunnel HTTP checks cover transport; the final client check must
-observe a call selected through the connector in ChatGPTMOD.
+Full Disk Access for the LaunchAgent's Node executable awaits the user's
+confirmation. A read of the test file under Documents stalled. The macOS
+privacy log identified the LaunchAgent's Node executable as the responsible
+process and reported denied `SystemPolicyAllFiles` access. The stalled test
+processes were terminated. Protected-folder reads require a separate check
+after that macOS permission is enabled.
 
 Direct UI automation of ChatGPTMOD was refused by the computer-use tool.
 Registration was therefore completed through the shared account settings.
+The final successful model-originated calls used Local Mac Terminal in this
+running ChatGPTMOD chat.
 
 ## Limits of the evidence
 
