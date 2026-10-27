@@ -12,7 +12,8 @@ ChatGPT plan's usage limits still apply.
 
 The base installation is reviewed in
 [PR #1](https://github.com/pvd232/local-terminal-mcp/pull/1). The stable-address
-change is on `feat/stable-tunnel-address`.
+change is reviewed in [PR #2](https://github.com/pvd232/local-terminal-mcp/pull/2)
+on `feat/stable-tunnel-address`.
 
 ## Install on a Mac
 
@@ -81,7 +82,7 @@ its tool-refresh behavior must be verified in the app.
 
 The complete address includes a randomly generated path. Treat it as the
 connection credential and keep it out of public issues and repository files.
-The connection uses the local server and the Quick Tunnel directly.
+The connection uses the local server and the selected tunnel directly.
 
 ### macOS access to protected folders
 
@@ -116,14 +117,15 @@ Run these commands from this checkout after `nvm use`:
 | `npm run terminal -- verify` | Test real terminal calls through the public tunnel |
 | `npm run terminal -- verify --local` | Run the same test directly on the Mac |
 | `npm run terminal -- start` | Load the job if needed and wait for readiness; preserve an active job |
-| `npm run terminal -- stop` | Stop the current job and retain configuration and logs |
+| `npm run terminal -- stop` | Stop the current job, wait for launchd to unload it, and retain configuration and logs |
 | `npm run terminal -- install` | Create or regenerate the LaunchAgent and start it |
 
 Stopping the job ends current access. Its property list remains installed, so
 it is configured to start again at the next login. With the stable ngrok route,
 the configured address stays the same across job restarts. With a Quick Tunnel,
-a whole-job restart creates a new hostname: copy the new address and update the
-custom connector in the account settings before using it again.
+a whole-job restart creates a new hostname. Follow the one-time connector
+replacement steps in the [stable-address guide](docs/stable-address.md) to move
+an existing Quick Tunnel connection to the fixed address.
 
 Keep the Mac awake and connected while making remote calls. Quick Tunnels
 [provide temporary hostnames with best-effort availability](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
@@ -141,7 +143,7 @@ Machine state is stored in `~/Library/Application Support/local-terminal-mcp/`:
 | `config.json` | Persistent loopback port, private MCP path, and tunnel provider, executable, and optional fixed origin |
 | `current.json` | Derived process ID, start time, status, and current public address |
 | `service.log` | Background job's ordinary output |
-| `service.err.log` | Startup errors and cloudflared connection logs |
+| `service.err.log` | Startup errors and tunnel connection logs |
 
 The generated LaunchAgent is
 `~/Library/LaunchAgents/com.pvd232.local-terminal-mcp.plist`.
@@ -188,3 +190,6 @@ reproduction checks; the [client-verification review](docs/reviews/04-client-ver
 records the initial ChatGPTMOD calls and protected-folder finding.
 The [protected-folder review](docs/reviews/05-protected-folder-verification.md)
 records the successful Documents read after Full Disk Access was enabled.
+The [stable-address review](docs/reviews/06-stable-address-implementation.md)
+records the provider change; the [restart review](docs/reviews/07-stable-restart-verification.md)
+records the launchd timing repair and live restart checks.

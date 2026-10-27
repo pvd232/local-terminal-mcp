@@ -88,6 +88,18 @@ async function start() {
   console.log('Bridge and tunnel are ready. The background job restarts at login.');
 }
 
+/** Wait for launchd to remove the stopped job before allowing another start. */
+async function stop() {
+  const loaded = () => spawnSync('/bin/launchctl', ['print', target], { stdio: 'ignore' }).status === 0;
+  if (loaded()) run('/bin/launchctl', ['bootout', target]);
+  const deadline = Date.now() + 15_000;
+  while (loaded()) {
+    if (Date.now() >= deadline) throw new Error('The background job is still unloading. Check launchctl before starting it again.');
+    await delay(100);
+  }
+  console.log('Background job stopped. Configuration and logs are retained.');
+}
+
 try {
   const action = process.argv[2] ?? 'status';
   if (action === 'install') {
@@ -116,9 +128,7 @@ try {
   } else if (action === 'start') {
     await start();
   } else if (action === 'stop') {
-    const loaded = spawnSync('/bin/launchctl', ['print', target], { stdio: 'ignore' });
-    if (loaded.status === 0) run('/bin/launchctl', ['bootout', target]);
-    console.log('Background job stopped. Configuration and logs are retained.');
+    await stop();
   } else if (action === 'status' || action === 'url' || action === 'verify') {
     const settings = readSettings();
     await requireBridge(settings);

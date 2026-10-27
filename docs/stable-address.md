@@ -36,8 +36,15 @@ remains available for account-free installation.
    npm run terminal -- url
    ```
 
-5. Update Local Mac Terminal's server URL to the complete address printed by
-   `url`. The existing private path is preserved.
+5. Replace the account's temporary connection once. The settings page used for
+   this installation offers name and description edits, tool refresh, and app
+   deletion; its server URL is fixed. Rename the existing connector to
+   **Local Mac Terminal (Quick Tunnel)**. In the plugin directory, choose
+   **Add → Add custom MCP server**, name the replacement **Local Mac Terminal**,
+   and paste the complete address printed by `url`. Choose
+   **No authentication**, create the plugin, and connect it. <!-- direct-prose: allow -->
+   Apply the desired action permission to the replacement connector. The
+   existing private MCP path is preserved.
 6. Stop and start the job again, then compare `url` with the saved address and
    run `verify` again. Both address equality and successful tool calls are
    required for the restart check.
@@ -52,7 +59,9 @@ for ngrok, `tunnel.origin`. The ngrok authtoken stays in ngrok's own local
 configuration. The repository excludes both configuration files.
 
 `stable` validates the hostname and ngrok configuration, then saves the selected
-provider. Stop and start the job to apply that selection. Launchd continues to
+provider. Stop and start the job to apply that selection. The stop command waits
+for launchd to remove the old job before returning, so an immediate start loads
+the replacement. Launchd continues to
 supervise one bridge and one tunnel process. Public startup checks wait for the
 actual endpoint to answer; a saved hostname alone leaves readiness unproven.
 
