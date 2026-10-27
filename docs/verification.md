@@ -86,5 +86,19 @@ CLI in a fresh process for each service instance.
 The shared account now has a replacement **Local Mac Terminal** connector with
 the fixed address and **Allow all actions**. The original connection is named
 **Local Mac Terminal (Quick Tunnel)**. The replacement's refreshed catalog
-shows 12 write tools and 13 read tools. A model-originated call through the
-replacement in ChatGPTMOD awaits the chat's refreshed tool list.
+shows 12 write tools and 13 read tools.
+
+After the chat refreshed its tool list, model-originated calls through the
+replacement connector passed in ChatGPTMOD. A command returned a fresh marker,
+`Darwin`, and the local username. A protected Documents read returned the
+original 70-byte challenge; Node hashing and a standalone `shasum` call matched
+SHA-256 `99c62d191b391cbc1be2771f0ce24f1cc3acc3d7390131cc598870ee40dfec23`.
+An interactive `cat` session accepted input in a later call, and a separate
+`read_process_output` call returned that marker. Both test sessions were
+terminated. The installed service remained process 18309 and its complete
+connector address still matched the restart receipt.
+
+The local `stable-chatgptmod-verification.json` receipt retains the actual
+connector responses, including an initial combined-command hash mismatch and
+the successful content read and hash rechecks. The setup and final client checks
+are complete; login and sleep recovery retain the limits described above.

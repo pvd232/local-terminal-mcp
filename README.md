@@ -193,3 +193,5 @@ records the successful Documents read after Full Disk Access was enabled.
 The [stable-address review](docs/reviews/06-stable-address-implementation.md)
 records the provider change; the [restart review](docs/reviews/07-stable-restart-verification.md)
 records the launchd timing repair and live restart checks.
+The [final connector review](docs/reviews/08-stable-client-verification.md)
+records successful calls through the fixed address in ChatGPTMOD.
