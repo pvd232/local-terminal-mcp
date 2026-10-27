@@ -28,16 +28,21 @@ Date: October 27, 2026. Target client: ChatGPTMOD on macOS.
   `99c62d191b391cbc1be2771f0ce24f1cc3acc3d7390131cc598870ee40dfec23`.
 - An interactive `cat` session echoed input sent through a later connector
   call. The test session was then terminated.
+- The user enabled Full Disk Access for Node 22.23.4 after authenticating in
+  macOS. A later call through Local Mac Terminal in ChatGPTMOD read the original
+  challenge file under Documents and finished successfully. Its contents
+  matched the same independently recorded SHA-256.
+- The service remained running under the same process ID during the permission
+  change. Its bridge reports ready and its tunnel address remains assigned.
 - Additional paid-service cost: $0. Calls used the local server directly.
 
-## Pending
+## Client verification
 
-Full Disk Access for the LaunchAgent's Node executable awaits the user's
-confirmation. A read of the test file under Documents stalled. The macOS
-privacy log identified the LaunchAgent's Node executable as the responsible
-process and reported denied `SystemPolicyAllFiles` access. The stalled test
-processes were terminated. Protected-folder reads require a separate check
-after that macOS permission is enabled.
+Commands, file reads in the development checkout and Documents, and a
+session spanning separate calls passed through the installed connector.
+The earlier Documents read stalled while the macOS privacy log reported denied
+`SystemPolicyAllFiles` access for the background Node executable. The read
+succeeded after the user enabled that executable in Full Disk Access.
 
 Direct UI automation of ChatGPTMOD was refused by the computer-use tool.
 Registration was therefore completed through the shared account settings.

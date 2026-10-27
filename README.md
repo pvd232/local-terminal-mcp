@@ -84,6 +84,9 @@ Apple describes these permissions in its
 During the initial installation, a Documents read stalled and the macOS privacy
 log reported that the LaunchAgent's Node executable lacked Full Disk Access.
 Commands and file reads in the development checkout passed.
+After the user enabled Full Disk Access for the pinned Node executable, the
+same Documents file was read successfully through Local Mac Terminal in
+ChatGPTMOD.
 
 For access to protected folders, open **System Settings → Privacy & Security →
 Full Disk Access**. Add the absolute Node executable printed by
@@ -172,4 +175,6 @@ Those records identify the reviewed source and executed checks. Each record is
 the implementing agent's self-review.
 The [operating-guide review](docs/reviews/03-reproduction-and-handoff.md) records
 reproduction checks; the [client-verification review](docs/reviews/04-client-verification.md)
-records the later ChatGPTMOD calls and remaining macOS permission step.
+records the initial ChatGPTMOD calls and protected-folder finding.
+The [protected-folder review](docs/reviews/05-protected-folder-verification.md)
+records the successful Documents read after Full Disk Access was enabled.
