@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Run the free local Desktop Commander server through a personal ChatGPT connection.",
   "scripts": {
-    "check": "node --check scripts/bridge.mjs && node --check scripts/verify.mjs && node --check tests/bridge.test.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "check": "node --check scripts/bridge.mjs && node --check scripts/verify.mjs && node --check scripts/settings.mjs && node --check scripts/service.mjs && node --check scripts/terminal.mjs && node --check tests/bridge.test.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "terminal": "node scripts/terminal.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
