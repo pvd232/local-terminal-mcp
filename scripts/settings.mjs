@@ -20,14 +20,36 @@ export function writeJson(path, value) {
   renameSync(temporary, path);
 }
 
-/** Read the persistent local port, endpoint path, and tunnel executable. */
-export function readSettings() {
-  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+/** Canonicalize one free ngrok account hostname while rejecting paid-domain inputs. */
+export function ngrokOrigin(value) {
+  assert.equal(typeof value, 'string', 'Provide the free ngrok account hostname.');
+  const origin = new URL(value.includes('://') ? value : `https://${value}`);
+  assert.equal(origin.protocol, 'https:');
+  assert.match(origin.hostname, /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.ngrok-free\.(?:app|dev)$/);
+  assert.equal(origin.pathname, '/');
+  assert.equal(`${origin.username}${origin.password}${origin.port}${origin.search}${origin.hash}`, '');
+  return origin.origin;
+}
+
+/** Validate configuration and resolve the original Quick Tunnel file format. */
+export function parseSettings(settings) {
   assert.ok(Number.isInteger(settings.port) && settings.port > 0 && settings.port < 65536, 'Invalid port.');
   assert.match(settings.endpointPath, /^\/mcp\/[a-f0-9]{48}$/);
-  assert.equal(typeof settings.cloudflaredPath, 'string');
-  assert.ok(settings.cloudflaredPath.startsWith('/'), 'cloudflaredPath must be absolute.');
-  return settings;
+  const tunnel = settings.tunnel ?? {
+    provider: 'cloudflare-quick', executablePath: settings.cloudflaredPath,
+  };
+  assert.ok(['cloudflare-quick', 'ngrok'].includes(tunnel.provider), 'Invalid tunnel provider.');
+  assert.equal(typeof tunnel.executablePath, 'string');
+  assert.ok(tunnel.executablePath.startsWith('/'), 'Tunnel executablePath must be absolute.');
+  const resolved = { provider: tunnel.provider, executablePath: tunnel.executablePath };
+  if (tunnel.provider === 'ngrok') resolved.origin = ngrokOrigin(tunnel.origin);
+  else assert.equal(tunnel.origin, undefined, 'Quick Tunnel addresses are assigned at startup.');
+  return { port: settings.port, endpointPath: settings.endpointPath, tunnel: resolved };
+}
+
+/** Read the persistent local port, endpoint path, and selected tunnel. */
+export function readSettings() {
+  return parseSettings(JSON.parse(readFileSync(settingsPath, 'utf8')));
 }
 
 /** Read status written by the current background-service process. */

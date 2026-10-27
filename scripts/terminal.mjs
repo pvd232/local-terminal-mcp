@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
-  agentPath, currentPath, readCurrent, readSettings, repositoryRoot,
+  agentPath, currentPath, ngrokOrigin, readCurrent, readSettings, repositoryRoot,
   serviceLabel, settingsPath, stateDirectory, writeJson,
 } from './settings.mjs';
 import { verify } from './verify.mjs';
@@ -97,7 +97,7 @@ try {
       writeJson(settingsPath, {
         port: 8931,
         endpointPath: `/mcp/${randomBytes(24).toString('hex')}`,
-        cloudflaredPath,
+        tunnel: { provider: 'cloudflare-quick', executablePath: cloudflaredPath },
       });
     }
     readSettings();
@@ -105,6 +105,14 @@ try {
     writeFileSync(agentPath, propertyList(), { mode: 0o600 });
     run('/usr/bin/plutil', ['-lint', agentPath]);
     await start();
+  } else if (action === 'stable') {
+    const origin = ngrokOrigin(process.argv[3]);
+    const executablePath = run('/usr/bin/which', ['ngrok']);
+    run(executablePath, ['config', 'check']);
+    writeJson(settingsPath, {
+      ...readSettings(), tunnel: { provider: 'ngrok', executablePath, origin },
+    });
+    console.log('Stable hostname saved. Stop and start the job to apply it.');
   } else if (action === 'start') {
     await start();
   } else if (action === 'stop') {
@@ -128,7 +136,7 @@ try {
       console.log(JSON.stringify(await verify(endpoint), null, 2));
     }
   } else {
-    throw new Error('Choose install, start, stop, status, url, or verify [--local].');
+    throw new Error('Choose install, stable <free-ngrok-hostname>, start, stop, status, url, or verify [--local].');
   }
 } catch (error) {
   console.error(error.message);
