@@ -6,11 +6,11 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
-  agentPath, currentPath, ngrokOrigin, readCurrent, readSettings, repositoryRoot,
+  agentPath, currentPath, ngrokOrigin, parseSettings, readCurrent, readSecureProfile, readSettings, repositoryRoot,
   serviceLabel, settingsPath, stateDirectory, writeJson,
 } from './settings.mjs';
 import { verify } from './verify.mjs';
-import { checkHealth } from './health.mjs';
+import { checkHealth, checkTunnelReadiness } from './health.mjs';
 
 const domain = `gui/${process.getuid()}`;
 const target = `${domain}/${serviceLabel}`;
@@ -52,15 +52,19 @@ async function requireBridge(settings) {
   await checkHealth(`http://127.0.0.1:${settings.port}`);
 }
 
-/** Wait for both the bridge and the assigned public tunnel to answer. */
+/** Wait for the bridge and the selected transport to report readiness. */
 async function waitForService() {
   const settings = readSettings();
   const deadline = Date.now() + 120_000;
-  let lastFailure = 'The public tunnel has not assigned an address.';
+  let lastFailure = 'The selected tunnel has not become ready.';
   while (Date.now() < deadline) {
     try {
       await requireBridge(settings);
       const current = readCurrent();
+      if (settings.tunnel.provider === 'openai-tunnel' && current.status !== 'stopped') {
+        await checkTunnelReadiness(settings.tunnel.healthOrigin);
+        return;
+      }
       if (current.endpoint && current.status !== 'stopped') {
         await checkHealth(current.endpoint);
         return;
@@ -120,6 +124,16 @@ try {
       ...readSettings(), tunnel: { provider: 'ngrok', executablePath, origin },
     });
     console.log('Stable hostname saved. Stop and start the job to apply it.');
+  } else if (action === 'secure') {
+    const [, , , tunnelId, executablePath, configPath, healthOrigin = 'http://127.0.0.1:8932'] = process.argv;
+    const candidate = parseSettings({
+      ...readSettings(), tunnel: { provider: 'openai-tunnel', tunnelId, executablePath, configPath, healthOrigin },
+    });
+    if (!existsSync(candidate.tunnel.configPath)) throw new Error('Prepare the native tunnel configuration first.');
+    readSecureProfile(candidate);
+    run(candidate.tunnel.executablePath, ['doctor', '--config', candidate.tunnel.configPath, '--json']);
+    writeJson(settingsPath, candidate);
+    console.log('Private tunnel settings saved. Restart the background job to apply them.');
   } else if (action === 'start') {
     await start();
   } else if (action === 'stop') {
@@ -138,17 +152,23 @@ try {
   } else if (action === 'status') {
     const settings = readSettings();
     const current = readCurrent();
-    const [local, publicRoute] = await Promise.allSettled([
-      checkHealth(`http://127.0.0.1:${settings.port}`),
-      current.endpoint ? checkHealth(current.endpoint) : Promise.reject(new Error('No endpoint')),
+    const privateTunnel = settings.tunnel.provider === 'openai-tunnel';
+    let tunnelCheck;
+    if (privateTunnel) tunnelCheck = checkTunnelReadiness(settings.tunnel.healthOrigin);
+    else if (current.endpoint) tunnelCheck = checkHealth(current.endpoint);
+    else tunnelCheck = Promise.reject(new Error('No endpoint'));
+    const [local, transport] = await Promise.allSettled([
+      checkHealth(`http://127.0.0.1:${settings.port}`), tunnelCheck,
     ]);
     const bridgeReady = local.status === 'fulfilled';
-    const publicReady = publicRoute.status === 'fulfilled';
+    const publicReady = transport.status === 'fulfilled';
     console.log(JSON.stringify({
-      bridgeReady, publicReady, status: bridgeReady && publicReady ? 'ready' : 'degraded',
+      bridgeReady, tunnelReady: publicReady, publicReady: privateTunnel ? null : publicReady,
+      provider: settings.tunnel.provider, status: bridgeReady && publicReady ? 'ready' : 'degraded',
       checkedAt: new Date().toISOString(), pid: current.pid,
       supervisorCheckedAt: current.checkedAt ?? null,
       publicCheckedAt: current.publicCheckedAt ?? null,
+      tunnelCheckedAt: current.tunnelCheckedAt ?? null,
       lastHealthyAt: current.lastHealthyAt ?? null,
       lastError: current.lastError ?? null, tunnelRestarts: current.tunnelRestarts ?? 0,
       remoteWorkUntil: current.remoteWorkUntil ?? null,
@@ -159,17 +179,22 @@ try {
     await requireBridge(settings);
     const current = readCurrent();
     if (current.status === 'stopped') throw new Error('The background job is stopped.');
-    if (action === 'url') {
+    if (action === 'url' && settings.tunnel.provider === 'openai-tunnel') {
+      console.log(settings.tunnel.tunnelId);
+    } else if (action === 'url') {
       if (!current.endpoint) throw new Error('The tunnel is still starting.');
       console.log(current.endpoint);
     } else {
+      if (settings.tunnel.provider === 'openai-tunnel' && !process.argv.includes('--local')) {
+        throw new Error('Private tunnel: use verify --local for the Mac service, then verify a tool call in ChatGPT.');
+      }
       const endpoint = process.argv.includes('--local')
         ? `http://127.0.0.1:${settings.port}${settings.endpointPath}` : current.endpoint;
       if (!endpoint) throw new Error('The tunnel is still starting.');
       console.log(JSON.stringify(await verify(endpoint), null, 2));
     }
   } else {
-    throw new Error('Choose install, stable <free-ngrok-hostname>, start, stop, remote-work [minutes|off], status, url, or verify [--local].');
+    throw new Error('Choose install, stable <free-ngrok-hostname>, secure <tunnel-id> <client> <config> [health-origin], start, stop, remote-work [minutes|off], status, url, or verify [--local].');
   }
 } catch (error) {
   console.error(error.message);

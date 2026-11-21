@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
-import { checkHealth } from '../scripts/health.mjs';
+import { checkHealth, checkTunnelReadiness } from '../scripts/health.mjs';
 import { publicRetryDelay, remoteWorkSeconds, shouldRestartTunnel } from '../scripts/recovery.mjs';
 import { rpc } from '../scripts/verify.mjs';
 
@@ -80,18 +80,45 @@ test('recovery waits for repeated failures, skips offline errors, and bounds ret
   assert.equal(remoteWorkSeconds(999, 1000), 0);
 });
 
-test('an isolated supervisor preserves terminal sessions after tunnel exit and expires its wake lease', async () => {
+for (const provider of ['cloudflare-quick', 'openai-tunnel']) {
+test('an isolated supervisor preserves terminal sessions after tunnel exit and expires its wake lease: ' + provider, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'local-terminal-reliability-'));
   const reservation = await listen(() => {});
   const port = reservation.server.address().port;
   await new Promise(resolve => reservation.server.close(resolve));
+  const healthReservation = await listen(() => {});
+  const healthPort = healthReservation.server.address().port;
+  await new Promise(resolve => healthReservation.server.close(resolve));
   const fakeTunnel = join(directory, 'tunnel');
-  await writeFile(fakeTunnel, '#!/bin/sh\nexec /bin/sleep 60\n', { mode: 0o700 });
+  const fakeProgram = provider === 'openai-tunnel'
+    ? `#!${process.execPath}
+const http = require('node:http');
+if (process.argv[2] !== 'run' || process.argv[3] !== '--config') process.exit(2);
+http.createServer((request, response) => {
+  response.writeHead(request.url === '/readyz' ? 200 : 404);
+  response.end('ready');
+}).listen(${healthPort}, '127.0.0.1');
+`
+    : '#!/bin/sh\nexec /bin/sleep 60\n';
+  await writeFile(fakeTunnel, fakeProgram, { mode: 0o700 });
   const settings = {
     port, endpointPath: `/mcp/${'b'.repeat(48)}`,
-    tunnel: { provider: 'cloudflare-quick', executablePath: fakeTunnel },
+    tunnel: {
+      provider, executablePath: fakeTunnel,
+      ...(provider === 'openai-tunnel' ? {
+        configPath: join(directory, 'native.yaml'), tunnelId: 'tunnel_' + 'd'.repeat(32),
+        healthOrigin: `http://127.0.0.1:${healthPort}`,
+      } : {}),
+    },
     remoteWorkUntil: Date.now() + 5000,
   };
+  if (provider === 'openai-tunnel') {
+    await writeFile(settings.tunnel.configPath, JSON.stringify({
+      control_plane: { tunnel_id: settings.tunnel.tunnelId, api_key: 'env:TEST_RUNTIME_SECRET' },
+      health: { listen_addr: `127.0.0.1:${healthPort}` },
+      mcp: { server_urls: [{ channel: 'main', url: `http://127.0.0.1:${port}${settings.endpointPath}` }] },
+    }));
+  }
   const configPath = join(directory, 'config.json');
   await writeFile(configPath, JSON.stringify(settings), { mode: 0o600 });
   const service = spawn(process.execPath, ['scripts/service.mjs'], {
@@ -116,6 +143,9 @@ test('an isolated supervisor preserves terminal sessions after tunnel exit and e
     const after = await waitFor(state, value =>
       value.tunnelRestarts === 1 && value.tunnelPid && value.tunnelPid !== before.tunnelPid);
     assert.equal(after.pid, before.pid);
+    if (provider === 'openai-tunnel') {
+      await waitFor(() => checkTunnelReadiness(settings.tunnel.healthOrigin), value => value.ready);
+    }
     const echoed = await rpc(endpoint, 'tools/call', {
       name: 'interact_with_process',
       arguments: { pid: terminalPid, input: 'SESSION_SURVIVED_TUNNEL_RECOVERY\n', timeout_ms: 500 },
@@ -140,5 +170,28 @@ test('an isolated supervisor preserves terminal sessions after tunnel exit and e
     await exited;
     clearTimeout(kill);
     await rm(directory, { recursive: true, force: true });
+  }
+});
+}
+
+test('private readiness accepts the vendor response and rejects a listening but unready process', async () => {
+  let ready = true;
+  let stall = false;
+  const { server, origin } = await listen((request, response) => {
+    assert.equal(request.url, '/readyz');
+    if (stall) return;
+    response.writeHead(ready ? 200 : 503);
+    response.end(ready ? 'ready' : 'not ready');
+  });
+  try {
+    assert.equal((await checkTunnelReadiness(origin)).ready, true);
+    ready = false;
+    await assert.rejects(checkTunnelReadiness(origin), { code: 'EUNREADY' });
+    await assert.rejects(checkTunnelReadiness('http://example.com:8932'));
+    stall = true;
+    await assert.rejects(checkTunnelReadiness(origin, 80), { name: 'TimeoutError' });
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
   }
 });

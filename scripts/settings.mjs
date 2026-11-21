@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 export const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 export const stateDirectory = process.env.LOCAL_TERMINAL_MCP_STATE_DIR
@@ -39,12 +40,26 @@ export function parseSettings(settings) {
   const tunnel = settings.tunnel ?? {
     provider: 'cloudflare-quick', executablePath: settings.cloudflaredPath,
   };
-  assert.ok(['cloudflare-quick', 'ngrok'].includes(tunnel.provider), 'Invalid tunnel provider.');
+  assert.ok(['cloudflare-quick', 'ngrok', 'openai-tunnel'].includes(tunnel.provider), 'Invalid tunnel provider.');
   assert.equal(typeof tunnel.executablePath, 'string');
   assert.ok(tunnel.executablePath.startsWith('/'), 'Tunnel executablePath must be absolute.');
   const resolved = { provider: tunnel.provider, executablePath: tunnel.executablePath };
   if (tunnel.provider === 'ngrok') resolved.origin = ngrokOrigin(tunnel.origin);
-  else assert.equal(tunnel.origin, undefined, 'Quick Tunnel addresses are assigned at startup.');
+  else if (tunnel.provider === 'openai-tunnel') {
+    assert.match(tunnel.tunnelId, /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/);
+    assert.equal(typeof tunnel.configPath, 'string');
+    assert.ok(tunnel.configPath.startsWith('/'), 'Native configuration path must be absolute.');
+    const health = new URL(tunnel.healthOrigin);
+    assert.equal(health.protocol, 'http:');
+    assert.equal(health.hostname, '127.0.0.1');
+    assert.ok(Number(health.port) > 0, 'Use a fixed loopback health port.');
+    assert.equal(health.pathname, '/');
+    assert.equal(health.username + health.password + health.search + health.hash, '');
+    assert.equal(tunnel.origin, undefined, 'Private tunnels have no public Mac origin.');
+    resolved.tunnelId = tunnel.tunnelId;
+    resolved.configPath = tunnel.configPath;
+    resolved.healthOrigin = health.origin;
+  } else assert.equal(tunnel.origin, undefined, 'Quick Tunnel addresses are assigned at startup.');
   const parsed = { port: settings.port, endpointPath: settings.endpointPath, tunnel: resolved };
   if (settings.remoteWorkUntil !== undefined) {
     assert.ok(Number.isSafeInteger(settings.remoteWorkUntil) && settings.remoteWorkUntil >= 0,
@@ -62,4 +77,22 @@ export function readSettings() {
 /** Read status written by the current background-service process. */
 export function readCurrent() {
   return JSON.parse(readFileSync(currentPath, 'utf8'));
+}
+
+/** Bind a native profile to this Mac service and its configured tunnel identity. */
+export function validateSecureProfile(settings, profile) {
+  assert.equal(profile?.control_plane?.tunnel_id, settings.tunnel.tunnelId, 'Native profile tunnel ID differs.');
+  assert.equal(profile.health?.listen_addr, new URL(settings.tunnel.healthOrigin).host, 'Native health listener differs.');
+  assert.match(profile.control_plane.api_key, /^(?:file:\/[^\n]+|env:[A-Za-z_][A-Za-z0-9_]*)$/,
+    'Use a file or environment reference for the runtime secret.');
+  const main = profile.mcp?.server_urls?.filter(binding => binding.channel === 'main') ?? [];
+  assert.equal(main.length, 1, 'Configure exactly one main MCP binding.');
+  assert.equal(main[0].url, `http://127.0.0.1:${settings.port}${settings.endpointPath}`,
+    'Native profile must target this Mac service.');
+  return profile;
+}
+
+/** Read the native YAML through a safe parser before activating the transport. */
+export function readSecureProfile(settings) {
+  return validateSecureProfile(settings, yaml.safeLoad(readFileSync(settings.tunnel.configPath, 'utf8')));
 }
