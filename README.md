@@ -105,6 +105,9 @@ in the LaunchAgent; changing Node installations requires checking it again.
 The installation's current permission status is in
 [verification.md](docs/verification.md).
 
+For ongoing readiness checks, automatic recovery, scoped DNS fallback, and
+timed prevention of idle sleep, see [connection reliability](docs/reliability.md).
+
 ## Operate it
 
 Run these commands from this checkout after `nvm use`:

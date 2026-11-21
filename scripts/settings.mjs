@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
-export const stateDirectory = join(homedir(), 'Library', 'Application Support', 'local-terminal-mcp');
+export const stateDirectory = process.env.LOCAL_TERMINAL_MCP_STATE_DIR
+  ?? join(homedir(), 'Library', 'Application Support', 'local-terminal-mcp');
 export const settingsPath = join(stateDirectory, 'config.json');
 export const currentPath = join(stateDirectory, 'current.json');
 export const serviceLabel = 'com.pvd232.local-terminal-mcp';
@@ -44,7 +45,13 @@ export function parseSettings(settings) {
   const resolved = { provider: tunnel.provider, executablePath: tunnel.executablePath };
   if (tunnel.provider === 'ngrok') resolved.origin = ngrokOrigin(tunnel.origin);
   else assert.equal(tunnel.origin, undefined, 'Quick Tunnel addresses are assigned at startup.');
-  return { port: settings.port, endpointPath: settings.endpointPath, tunnel: resolved };
+  const parsed = { port: settings.port, endpointPath: settings.endpointPath, tunnel: resolved };
+  if (settings.remoteWorkUntil !== undefined) {
+    assert.ok(Number.isSafeInteger(settings.remoteWorkUntil) && settings.remoteWorkUntil >= 0,
+      'remoteWorkUntil must be a nonnegative epoch time in milliseconds.');
+    parsed.remoteWorkUntil = settings.remoteWorkUntil;
+  }
+  return parsed;
 }
 
 /** Read the persistent local port, endpoint path, and selected tunnel. */

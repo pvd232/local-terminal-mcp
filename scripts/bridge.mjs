@@ -49,8 +49,19 @@ export async function startBridge({ port, endpointPath, onFailure = console.erro
       },
       onUnhandledRequest: async (request, response) => {
         if (request.method === 'GET' && request.url === '/healthz') {
-          response.writeHead(200, { 'Content-Type': 'application/json' });
-          response.end(JSON.stringify({ ready: true }));
+          try {
+            await upstream.ping({ timeout: 5000 });
+            const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+            const nonce = request.headers['x-local-terminal-probe'];
+            if (typeof nonce === 'string' && /^[a-f0-9]{32}$/.test(nonce)) {
+              headers['x-local-terminal-probe'] = nonce;
+            }
+            response.writeHead(200, headers);
+            response.end(JSON.stringify({ ready: true }));
+          } catch {
+            response.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+            response.end(JSON.stringify({ ready: false }));
+          }
         } else {
           response.writeHead(404).end();
         }
