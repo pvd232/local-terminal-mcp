@@ -1,4 +1,5 @@
 /** Check HTTP readiness through the real subprocess, with scoped DNS fallback. */
+import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns';
 import { Resolver } from 'node:dns/promises';
@@ -80,4 +81,19 @@ export async function checkHealth(origin, timeoutMs = 8000) {
     req.on('error', error => { clearTimeout(timer); reject(error); });
     req.end();
   });
+}
+
+/** Require the vendor client's loopback readiness response within one deadline. */
+export async function checkTunnelReadiness(origin, timeoutMs = 8000) {
+  const url = new URL('/readyz', origin);
+  assert.equal(url.protocol, 'http:');
+  assert.equal(url.hostname, '127.0.0.1');
+  assert.ok(Number(url.port) > 0);
+  const started = Date.now();
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' });
+  const body = await response.text();
+  if (response.status !== 200 || body.trim() !== 'ready') {
+    throw Object.assign(new Error('Private tunnel is not ready'), { code: 'EUNREADY' });
+  }
+  return { ready: true, latencyMs: Date.now() - started };
 }

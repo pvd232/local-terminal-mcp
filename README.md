@@ -15,6 +15,11 @@ The base installation is reviewed in
 change is reviewed in [PR #2](https://github.com/pvd232/local-terminal-mcp/pull/2)
 on `feat/stable-tunnel-address`.
 
+The primary private route uses OpenAI Secure MCP Tunnel directly on the Mac.
+Follow the [private connection guide](docs/private-tunnel.md) to qualify it,
+activate it, and retain the VM SSH relay for recovery. The public setup below
+remains available for rollback.
+
 ## Install on a Mac
 
 Use a Mac with Homebrew and nvm installed. Then:
@@ -70,8 +75,8 @@ JavaScript dependencies are pinned in [package.json](package.json) and
 3. Name it **Local Mac Terminal**, choose **Server URL**, and paste the address.
 4. Choose **No authentication**, acknowledge the custom-server notice, create <!-- direct-prose: allow -->
    the plugin, and connect it to the account.
-5. Set this connector's permission to **Allow all actions**, if that is the
-   access policy you want. The initial user requested this setting.
+5. Keep the connector permission at **Allow low-risk** and approve other
+   actions when needed.
 6. Return to ChatGPTMOD and select **Local Mac Terminal** with `@` in the chat.
    Ask it to run a command and inspect the selected tool's result.
 
@@ -115,8 +120,8 @@ Run these commands from this checkout after `nvm use`:
 | Command | Result |
 | --- | --- |
 | `npm run terminal -- stable <free-ngrok-hostname>` | Save a fixed free ngrok hostname for the next job start |
-| `npm run terminal -- status` | Check the bridge and whether a tunnel address has been assigned |
-| `npm run terminal -- url` | Print the complete current connector address |
+| `npm run terminal -- status` | Check the bridge and selected transport with fresh probes |
+| `npm run terminal -- url` | Print the private tunnel ID or current public connector address |
 | `npm run terminal -- verify` | Test real terminal calls through the public tunnel |
 | `npm run terminal -- verify --local` | Run the same test directly on the Mac |
 | `npm run terminal -- start` | Load the job if needed and wait for readiness; preserve an active job |
@@ -133,7 +138,8 @@ an existing Quick Tunnel connection to the fixed address.
 Keep the Mac awake and connected while making remote calls. Quick Tunnels
 [provide temporary hostnames with best-effort availability](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
 
-If a call fails, run `status`, then `verify --local`, then `verify`. This
+If a call fails, run `status`, then `verify --local`, then a selected-plugin
+tool call. Public transports also support `verify`. This
 separates a local-server failure from a tunnel failure. Read `service.err.log`
 for the exact startup or connection error before restarting the job.
 

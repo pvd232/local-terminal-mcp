@@ -1,16 +1,18 @@
 /** Supervise subprocess health, tunnel recovery, and timed remote-work wake leases. */
 import { spawn } from 'node:child_process';
 import { startBridge } from './bridge.mjs';
-import { checkHealth } from './health.mjs';
+import { checkHealth, checkTunnelReadiness } from './health.mjs';
 import { publicRetryDelay, remoteWorkSeconds, shouldRestartTunnel } from './recovery.mjs';
-import { currentPath, readSettings, writeJson } from './settings.mjs';
+import { currentPath, readSecureProfile, readSettings, writeJson } from './settings.mjs';
 
 const settings = readSettings();
 const current = {
   pid: process.pid, startedAt: new Date().toISOString(), status: 'starting', endpoint: null,
-  bridgeHealthy: false, publicHealthy: false, checkedAt: null, publicCheckedAt: null,
+  bridgeHealthy: false, publicHealthy: null, tunnelHealthy: false, checkedAt: null,
+  publicCheckedAt: null, tunnelCheckedAt: null,
   lastHealthyAt: null, lastError: null, tunnelRestarts: 0, tunnelPid: null, remoteWorkUntil: null,
 };
+const privateTunnel = settings.tunnel.provider === 'openai-tunnel';
 const stable = settings.tunnel.provider === 'ngrok';
 let bridge;
 let tunnel;
@@ -45,7 +47,8 @@ function stop(code) {
     tunnel?.kill('SIGTERM');
     current.status = 'stopped';
     current.bridgeHealthy = false;
-    current.publicHealthy = false;
+    current.publicHealthy = privateTunnel ? null : false;
+    current.tunnelHealthy = false;
     save();
     try {
       await bridge?.close();
@@ -59,22 +62,32 @@ function stop(code) {
 /** Restart only the tunnel so healthy terminal sessions retain their owner. */
 function startTunnel() {
   if (stopping) return;
-  const args = stable ? [
-    'http', `http://127.0.0.1:${settings.port}`, `--url=${settings.tunnel.origin}`,
-    '--log=stdout', '--log-format=json', '--inspect=false',
-  ] : [
-    'tunnel', '--no-autoupdate', '--config', '/dev/null',
-    '--protocol', 'http2', '--url', `http://127.0.0.1:${settings.port}`,
-  ];
+  let args;
+  if (privateTunnel) {
+    readSecureProfile(settings);
+    args = ['run', '--config', settings.tunnel.configPath];
+  } else if (stable) {
+    args = [
+      'http', `http://127.0.0.1:${settings.port}`, `--url=${settings.tunnel.origin}`,
+      '--log=stdout', '--log-format=json', '--inspect=false',
+    ];
+  } else {
+    args = [
+      'tunnel', '--no-autoupdate', '--config', '/dev/null',
+      '--protocol', 'http2', '--url', `http://127.0.0.1:${settings.port}`,
+    ];
+  }
   current.status = 'tunnel-starting';
-  current.publicHealthy = false;
+  current.publicHealthy = privateTunnel ? null : false;
+  current.tunnelHealthy = false;
+  if (privateTunnel) current.tunnelId = settings.tunnel.tunnelId;
   if (stable) current.endpoint = `${settings.tunnel.origin}${settings.endpointPath}`;
   else current.endpoint = null;
   lastTunnelStart = Date.now();
   nextPublicCheck = 0;
   save();
   const child = spawn(settings.tunnel.executablePath, args, {
-    stdio: ['ignore', stable ? 'pipe' : 'ignore', 'pipe'],
+    stdio: ['ignore', stable || privateTunnel ? 'pipe' : 'ignore', 'pipe'],
   });
   tunnel = child;
   current.tunnelPid = child.pid ?? null;
@@ -82,7 +95,7 @@ function startTunnel() {
   let recentOutput = '';
   const output = chunk => {
     process.stderr.write(chunk);
-    if (stable) return;
+    if (stable || privateTunnel) return;
     recentOutput = `${recentOutput}${chunk}`.slice(-8192);
     const match = recentOutput.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
     if (!current.endpoint && match) {
@@ -99,7 +112,8 @@ function startTunnel() {
     tunnel = undefined;
     current.tunnelPid = null;
     current.status = 'degraded';
-    current.publicHealthy = false;
+    current.publicHealthy = privateTunnel ? null : false;
+    current.tunnelHealthy = false;
     current.lastError = 'tunnel-exited';
     current.tunnelRestarts += 1;
     save();
@@ -140,7 +154,7 @@ function updateWakeLease() {
   });
 }
 
-/** Check locally each minute and publicly at most every ten healthy minutes. */
+/** Check the Mac service and private tunnel each minute; public routes every ten minutes. */
 async function heartbeat() {
   if (stopping) return;
   try {
@@ -152,9 +166,11 @@ async function heartbeat() {
       localFailures = 0;
     } catch (error) {
       current.bridgeHealthy = false;
-      current.publicHealthy = false;
+      current.publicHealthy = privateTunnel ? null : false;
+      current.tunnelHealthy = false;
       current.status = 'degraded';
       current.lastError = `local-${error.code ?? 'failed'}`;
+      nextPublicCheck = 0;
       localFailures += 1;
       save();
       if (localFailures >= 3) {
@@ -163,27 +179,31 @@ async function heartbeat() {
         return;
       }
     }
-    if (current.bridgeHealthy && current.endpoint && Date.now() >= nextPublicCheck) {
-      current.publicCheckedAt = new Date().toISOString();
+    if (current.bridgeHealthy && (privateTunnel || current.endpoint) && Date.now() >= nextPublicCheck) {
+      current.tunnelCheckedAt = new Date().toISOString();
+      if (!privateTunnel) current.publicCheckedAt = current.tunnelCheckedAt;
       try {
-        await checkHealth(current.endpoint);
-        current.publicHealthy = true;
+        if (privateTunnel) await checkTunnelReadiness(settings.tunnel.healthOrigin);
+        else await checkHealth(current.endpoint);
+        current.tunnelHealthy = true;
+        current.publicHealthy = privateTunnel ? null : true;
         current.lastHealthyAt = new Date().toISOString();
         current.lastError = null;
         current.status = 'ready';
         publicFailures = 0;
         exitFailures = 0;
-        nextPublicCheck = Date.now() + 600_000;
+        nextPublicCheck = Date.now() + (privateTunnel ? 60_000 : 600_000);
       } catch (error) {
-        current.publicHealthy = false;
+        current.publicHealthy = privateTunnel ? null : false;
+        current.tunnelHealthy = false;
         current.status = 'degraded';
-        current.lastError = `public-${error.code ?? 'failed'}`;
+        current.lastError = `${privateTunnel ? 'tunnel' : 'public'}-${error.code ?? 'failed'}`;
         publicFailures += 1;
         nextPublicCheck = Date.now() + publicRetryDelay(publicFailures);
         if (tunnel && shouldRestartTunnel({
-          stable, errorCode: error.code, failures: publicFailures, startedAt: lastTunnelStart,
+          stable: stable || privateTunnel, errorCode: error.code, failures: publicFailures, startedAt: lastTunnelStart,
         })) {
-          console.error('Public readiness failed repeatedly; restarting only the tunnel.');
+          console.error('Tunnel readiness failed repeatedly; restarting only the tunnel.');
           const failedTunnel = tunnel;
           failedTunnel.kill('SIGTERM');
           setTimeout(() => {
