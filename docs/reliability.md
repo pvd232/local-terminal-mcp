@@ -103,3 +103,34 @@ To undo the machine-local DNS and native heartbeat tuning, restore the private
 `ngrok.yml.before-reliability-20261121` backup and restart the job.
 End the wake lease with `remote-work off`. Repository changes are independently
 revertible through Git.
+
+## Resolve obsolete chat tools
+
+Check the selected plugin's app ID and saved server URL against the intended
+connection. Package display names can repeat; app IDs identify the remote
+app. An app-only plugin uses `.app.json` to reference that ID.
+[OpenAI documents this reference](https://learn.chatgpt.com/docs/enterprise/plugin-management#reference-an-existing-app-with-appjson).
+
+After replacing a temporary connection, uninstall its retired registration
+with the user's authorization. Keep the definition for rollback when desired.
+Refresh the retained app's tools in account settings, then verify a command
+through that selected plugin. A successful direct HTTP request establishes
+server availability; a successful selected-plugin call establishes chat routing.
+
+A running chat can retain an obsolete tool definition after the registration
+is removed. An unknown-tool response identifies that obsolete call.
+Reload the desktop chat and inspect the next turn's exposed tools. Require
+the fixed plugin's tool to return the expected Mac identity before declaring
+chat routing repaired. If the tool remains absent, retain the healthy server
+and report the chat-catalog refresh as unresolved.
+
+An app-only plugin contains an app reference.
+Repair its app registration and tool catalog through app settings.
+[OpenAI's upload rules](https://developers.openai.com/plugins/deploy/submission-errors#zip-upload-errors-and-warnings)
+reserve remote MCP submissions for the MCP path and reject app references
+inside skill ZIP uploads.
+
+Cloudflare Quick Tunnels remain useful for account-free temporary testing.
+The fixed ngrok route owns everyday remote terminal access in this setup.
+An expired Quick Tunnel registration adds a stale selection; reinstall a
+temporary route only when a specific testing task needs it.
