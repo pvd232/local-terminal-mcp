@@ -10,6 +10,7 @@ import {
   serviceLabel, settingsPath, stateDirectory, writeJson,
 } from './settings.mjs';
 import { verify } from './verify.mjs';
+import { checkHealth } from './health.mjs';
 
 const domain = `gui/${process.getuid()}`;
 const target = `${domain}/${serviceLabel}`;
@@ -48,10 +49,7 @@ function propertyList() {
 
 /** Check the actual loopback bridge rather than trusting an old status file. */
 async function requireBridge(settings) {
-  const response = await fetch(`http://127.0.0.1:${settings.port}/healthz`, {
-    signal: AbortSignal.timeout(3000),
-  });
-  if (!response.ok || !(await response.json()).ready) throw new Error('The local bridge is not ready.');
+  await checkHealth(`http://127.0.0.1:${settings.port}`);
 }
 
 /** Wait for both the bridge and the assigned public tunnel to answer. */
@@ -64,17 +62,14 @@ async function waitForService() {
       await requireBridge(settings);
       const current = readCurrent();
       if (current.endpoint && current.status !== 'stopped') {
-        const health = await fetch(new URL('/healthz', current.endpoint), {
-          signal: AbortSignal.timeout(3000),
-        });
-        if (health.ok && (await health.json()).ready) return;
-        lastFailure = `Public tunnel health returned HTTP ${health.status}.`;
+        await checkHealth(current.endpoint);
+        return;
       }
     } catch (error) {
       lastFailure = `${error.message}${error.cause?.code ? ` (${error.cause.code})` : ''}`;
       // launchd and the tunnel can each need time to establish a connection.
     }
-    await delay(500);
+    await delay(5000);
   }
   throw new Error(`Bridge and tunnel did not become ready within 120 seconds: ${lastFailure}. Check service.err.log.`);
 }
@@ -129,14 +124,42 @@ try {
     await start();
   } else if (action === 'stop') {
     await stop();
-  } else if (action === 'status' || action === 'url' || action === 'verify') {
+  } else if (action === 'remote-work') {
+    const requested = process.argv[3] ?? '120';
+    const minutes = requested === 'off' ? 0 : Number(requested);
+    if (!Number.isInteger(minutes) || (requested !== 'off' && minutes < 1) || minutes > 720) {
+      throw new Error('Choose remote-work <minutes from 1 to 720> or remote-work off.');
+    }
+    const until = minutes ? Date.now() + minutes * 60_000 : 0;
+    writeJson(settingsPath, { ...readSettings(), remoteWorkUntil: until });
+    spawnSync('/bin/launchctl', ['kill', 'SIGUSR1', target], { stdio: 'ignore' });
+    console.log(until ? `Remote-work idle-sleep prevention requested until ${new Date(until).toISOString()}.`
+      : 'Remote-work idle-sleep prevention released.');
+  } else if (action === 'status') {
+    const settings = readSettings();
+    const current = readCurrent();
+    const [local, publicRoute] = await Promise.allSettled([
+      checkHealth(`http://127.0.0.1:${settings.port}`),
+      current.endpoint ? checkHealth(current.endpoint) : Promise.reject(new Error('No endpoint')),
+    ]);
+    const bridgeReady = local.status === 'fulfilled';
+    const publicReady = publicRoute.status === 'fulfilled';
+    console.log(JSON.stringify({
+      bridgeReady, publicReady, status: bridgeReady && publicReady ? 'ready' : 'degraded',
+      checkedAt: new Date().toISOString(), pid: current.pid,
+      supervisorCheckedAt: current.checkedAt ?? null,
+      publicCheckedAt: current.publicCheckedAt ?? null,
+      lastHealthyAt: current.lastHealthyAt ?? null,
+      lastError: current.lastError ?? null, tunnelRestarts: current.tunnelRestarts ?? 0,
+      remoteWorkUntil: current.remoteWorkUntil ?? null,
+    }, null, 2));
+    if (!bridgeReady || !publicReady) process.exitCode = 1;
+  } else if (action === 'url' || action === 'verify') {
     const settings = readSettings();
     await requireBridge(settings);
     const current = readCurrent();
     if (current.status === 'stopped') throw new Error('The background job is stopped.');
-    if (action === 'status') {
-      console.log(JSON.stringify({ bridgeReady: true, tunnelAddressAssigned: Boolean(current.endpoint), pid: current.pid }, null, 2));
-    } else if (action === 'url') {
+    if (action === 'url') {
       if (!current.endpoint) throw new Error('The tunnel is still starting.');
       console.log(current.endpoint);
     } else {
@@ -146,7 +169,7 @@ try {
       console.log(JSON.stringify(await verify(endpoint), null, 2));
     }
   } else {
-    throw new Error('Choose install, stable <free-ngrok-hostname>, start, stop, status, url, or verify [--local].');
+    throw new Error('Choose install, stable <free-ngrok-hostname>, start, stop, remote-work [minutes|off], status, url, or verify [--local].');
   }
 } catch (error) {
   console.error(error.message);
